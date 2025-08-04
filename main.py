@@ -43,77 +43,128 @@ Implement hotkey registration using keyboard module with low resource mode\
 
 
 import customtkinter as ctk
+import customtkinter
+import darkdetect
 import json
 import os
 import pyperclip
 import keyboard
 import time
+import datetime
 import threading
-history_file = "history_data.json"
-last_copied = ""
+import uuid
+historyfile = "history_data.json"
 item = ""
-id = 1
-max_items = 50
+maxitems = 50
 
-def load_history():
-    if not os.path.exists(history_file):
-        return []
-    with open(history_file,"r") as f:
-        return json.load(f)
+class clipboardManager:
+    def __init__(self):
+        self.history_file = historyfile
+        self.max_items = maxitems
+        self.last_copied = ""
+        self.id = 1
+        self.loadcurrentid()
     
-def save_his(data):
-    with open(history_file,"w") as f:
-        json.dump(data, f, indent=4)
+    def loadcurrentid(self):
+        history = self.load_history()
+        if history:
+            self.current_id = max(item.get('id', 0) for item in history) + 1
 
-def add_clipboarditem(item_con):
-    global id
-    global last_copied
-    if last_copied == item_con:
-        return
-    
-    history = load_history()
-    if item_con != last_copied:
-        item_con = last_copied
-        id+=1
-        entry ={"id":id,"item":item_con,"timestamp":time.time(),"pinned":False}
-        history.insert(0,entry)
+    def load_history(self):
+        if not os.path.exists(self.history_file):
+            return []
+        try:
+            with open(self.history_file,"r",encoding='utf-8') as f:
+                return json.load(f)
+        except (json.JSONDecodeError,IOError):
+            return []
+        
+    def save_his(self,data):
+        with open(self.history_file,"w") as f:
+            json.dump(data, f, indent=2)
 
-        not_pinned = [i for i in history if not i["pinned"]]
-        if len(not_pinned)>50:
-            toremove =len(not_pinned) - max_items
-            history = [i for i in history if i["pinned"] or toremove <=0 or (toremove:=toremove-1)<0]
-        save_his(history)
+    def add_clipboarditem(self,item_con):
+        if not item_con or self.last_copied == item_con or len(item_con.strip()) == 0:
+            return False
+        
+        history = self.load_history()
+        recent_items = history[:10] if len(history)>=10 else history
+        for i in recent_items:
+            if i.get('content') == item_con:
+                return False
+        if item_con != last_copied:
+            last_copied = item_con
+            self.id+=1
+            entry ={"id":id,"content":item_con,"preview":item_con[:100]+"..." if len(item_con)>100 else item_con,"timestamp":time.time(),"formatted time":datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),"pinned":False}
+            history.insert(0,entry)
 
-def track_clipboard():
-    global last_copied
-    while True:
-        current_clipboard = pyperclip.paste()
-        if current_clipboard != last_copied:
-            add_clipboarditem(current_clipboard)
-            last_copied = current_clipboard
-        time.sleep(3)
+            not_pinned = [i for i in history if not i["pinned"]]
+            if len(not_pinned)>50:
+                toremove =len(not_pinned) - self.max_items
+                history = [i for i in history if i["pinned"] or toremove <=0 or (toremove:=toremove-1)<0]
+            self.save_his(history)
 
-def removeitem(item_id):
-    history = load_history()
-    history = [item for item in history if item["id"] != item_id]
-    save_his(history)
 
-def pin_item(item_id):
-    history = load_history()
-    for item in history:
-        if item["id"] == item_id:
-            item["pinned"] = True
-            break
-    save_his(history)
+    def track_clipboard(self):
+        global last_copied
+        while True:
+            current_clipboard = pyperclip.paste()
+            if current_clipboard != self.last_copied:
+                self.add_clipboarditem(current_clipboard)
+                self.last_copied = current_clipboard
+            time.sleep(3)
 
-def export_as_txt():
-    with open("history_copy.txt","w") as f:
-        f.write(history_file)
+    def removeitem(self,item_id):
+        history = self.load_history()
+        history = [item for item in history if item["id"] != item_id]
+        self.save_his(history)
 
-def export_as_json():
-    with open("history_copy.json", "w") as f:
-        f.write(history_file)
+    def pin_item(self,item_id):
+        history = self.load_history()
+        for item in history:
+            if item["id"] == item_id:
+                item["pinned"] = True
+                break
+        self.save_his(history)
 
+    def export_as_txt(self,selected_ids=None):
+        Rcode = uuid.uuid4()
+        history = self.load_history()
+        if selected_ids:
+            history = [i for i in history if i['id'] in selected_ids]
+        file_name = f"history_copy{Rcode}.txt"
+        try:
+            with open(file_name,"w", encoding='utf-8') as f:
+                f.write("ClipStack exported data\n")
+                f.write("_"*50+"\n\n")
+                for i in history:
+                    f.write(f"ID: {i['id']}\n")
+                    f.write(f"Time: {i.get('formatted_time','Unknown')}\n")
+                    f.write(f"Pinned: {'Yes' if i.get('pinned') else 'No'}\n")
+                    f.write(f"Content:\n{i['content']}\n")
+                    f.write("-"*50+"\n\n")
+            return file_name
+        except IOError:
+            return None
+    def export_as_json(self,selected_ids):
+        history = self.load_history()
+        if selected_ids:
+            history = [i for i in history if i['id'] in selected_ids]
+        Rcode = uuid.uuid4()
+        fileName = f"history_copy{Rcode}.json"
+        try:
+            with open(fileName, "w", encoding='utf-8') as f:
+                json.dump(history,f,indent=2,ensure_ascii=False)
+            return fileName
+        except IOError:
+            return None
+
+
+class trackclipboard:
+    def __init__(self):
+        self.
+        pass
+    pass
 def hotkey():
     if keyboard.is_pressed('ctrl+alt+c'):
         print("Hotkey pressed, opening history window...")
@@ -121,12 +172,32 @@ def hotkey():
         pass
 
     pass
+
+
+def on_modechoose(choice):
+    if choice == "System":
+        ctk.set_appearance_mode("system")
+    elif choice == "Dark":
+        ctk.set_appearance_mode("dark")
+    elif choice == "Light":
+        ctk.set_appearance_mode("light")
+#class copiedtext_box(ctk.):
+ctk.set_appearance_mode("system")
+ctk.set_default_color_theme("blue")
 class App(ctk.CTk):
-    def __init__(self):
-        super().__init__()
+    def __init__(self,*args,**kwargs):
+        super().__init__(*args,**kwargs)
+        system_mode = darkdetect.theme()
         self.title("ClipStack")
         self.geometry("800x600")
+        self.pinned_font = ctk.CTkFont(family="",size=20,weight='bold')
+        self.norm_font = ctk.CTkFont(family="",size=20,weight='normal')
+        self.modeOptionmenu = ctk.CTkOptionMenu(self,values=["System","Dark","Light"],command=on_modechoose)
+        self.modeOptionmenu.grid(row = 0, column=4,padx = 7, pady = 10,columnspan=2,sticky="ew")
+        self.modeOptionmenu.set("System")
 
-app = App()
-app.mainloop()
+
+if __name__ == "__main__":
+    app = App()
+    app.mainloop()
 print("App has started successfully.")
