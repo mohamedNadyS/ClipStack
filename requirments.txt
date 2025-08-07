@@ -1,3 +1,4 @@
+python==3.11.x
 tk
 customtkinter
 keyboard
@@ -5,7 +6,9 @@ pyperclip
 darkdetect
 uuid
 threading
-
+CTkMessagebox
+Pillow
+Pillow[tk]
 """
 app = customtkinter.CTk()
 app.grid_rowconfigure(0, weight=1)
