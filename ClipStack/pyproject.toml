@@ -1,0 +1,127 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "clipstack"
+version = "1.0.0"
+description = "A minimalist clipboard manager for developers and power users"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "ClipStack Developer", email = "developer@clipstack.com"}
+]
+maintainers = [
+    {name = "ClipStack Developer", email = "developer@clipstack.com"}
+]
+keywords = ["clipboard", "manager", "productivity", "developer-tools"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Desktop Environment",
+    "Topic :: Utilities",
+    "Topic :: Software Development :: Libraries :: Application Frameworks"
+]
+requires-python = ">=3.10"
+dependencies = [
+    "customtkinter>=5.2.0",
+    "pyperclip>=1.8.2",
+    "keyboard>=0.13.5",
+    "CTkMessagebox>=2.5",
+    "Pillow>=9.0.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=22.0.0",
+    "flake8>=4.0.0",
+    "mypy>=1.0.0",
+    "pre-commit>=2.20.0"
+]
+build = [
+    "pyinstaller>=5.13.0",
+    "setuptools>=61.0",
+    "wheel>=0.37.0"
+]
+
+[project.urls]
+Homepage = "https://github.com/yourusername/clipstack"
+Documentation = "https://github.com/yourusername/clipstack#readme"
+Repository = "https://github.com/yourusername/clipstack.git"
+"Bug Tracker" = "https://github.com/yourusername/clipstack/issues"
+
+[project.scripts]
+clipstack = "clipstack:main"
+
+[tool.setuptools]
+py-modules = ["clipstack"]
+
+[tool.setuptools.package-data]
+clipstack = ["*.json", "*.txt", "assets/*"]
+
+[tool.black]
+line-length = 88
+target-version = ['py310']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "--cov=clipstack --cov-report=html --cov-report=term-missing"
+
+[tool.coverage.run]
+source = ["clipstack"]
+omit = [
+    "tests/*",
+    "setup.py",
+    "venv/*",
+    ".venv/*"
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:"
+]
