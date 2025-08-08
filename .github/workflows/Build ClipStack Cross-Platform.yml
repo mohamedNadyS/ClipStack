@@ -117,6 +117,7 @@ jobs:
     - name: Create PyInstaller spec
       shell: bash
       run: |
+        cd ClipStack
         cat > ${APP_NAME}.spec << 'EOF'
         # -*- mode: python ; coding: utf-8 -*-
         import sys
@@ -246,7 +247,7 @@ jobs:
       run: |
         echo "Building ClipStack ${{ steps.version.outputs.version }} for ${{ matrix.os-name }}"
         cd ClipStack
-        pyinstaller ../clipstack.spec --clean --noconfirm --log-level INFO
+        pyinstaller clipstack.spec --clean --noconfirm --log-level INFO
 
     - name: Verify build (Windows)
       if: matrix.os-name == 'windows'
