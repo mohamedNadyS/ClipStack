@@ -140,7 +140,7 @@ jobs:
             icon = None  # Add .png path here if available
 
         a = Analysis(
-            ['ClipStack/main.py'],  # Fixed: Correct path to main script
+            ['main.py'],  # Script is in the current directory (ClipStack/)
             pathex=[],
             binaries=[],
             datas=[
@@ -245,35 +245,36 @@ jobs:
         BUILD_VERSION: ${{ steps.version.outputs.version }}
       run: |
         echo "Building ClipStack ${{ steps.version.outputs.version }} for ${{ matrix.os-name }}"
-        pyinstaller ${APP_NAME}.spec --clean --noconfirm --log-level INFO
+        cd ClipStack
+        pyinstaller ../${APP_NAME}.spec --clean --noconfirm --log-level INFO
 
     - name: Verify build (Windows)
       if: matrix.os-name == 'windows'
       run: |
-        if (Test-Path "dist\clipstack.exe") {
+        if (Test-Path "ClipStack\dist\clipstack.exe") {
           Write-Host "✅ Executable created successfully"
-          $fileInfo = Get-Item "dist\clipstack.exe"
+          $fileInfo = Get-Item "ClipStack\dist\clipstack.exe"
           Write-Host "Size: $($fileInfo.Length / 1MB) MB"
           Write-Host "Created: $($fileInfo.CreationTime)"
         } else {
           Write-Error "❌ Executable not found"
-          Get-ChildItem dist -Recurse
+          Get-ChildItem ClipStack\dist -Recurse
           exit 1
         }
 
     - name: Verify build (Unix)
       if: matrix.os-name != 'windows'
       run: |
-        if [ -f "dist/clipstack" ] || [ -d "dist/ClipStack.app" ]; then
+        if [ -f "ClipStack/dist/clipstack" ] || [ -d "ClipStack/dist/ClipStack.app" ]; then
           echo "✅ Executable created successfully"
-          ls -la dist/
-          if [ -f "dist/clipstack" ]; then
-            file dist/clipstack
-            ls -lh dist/clipstack
+          ls -la ClipStack/dist/
+          if [ -f "ClipStack/dist/clipstack" ]; then
+            file ClipStack/dist/clipstack
+            ls -lh ClipStack/dist/clipstack
           fi
         else
           echo "❌ Executable not found"
-          find dist -type f 2>/dev/null || echo "dist directory empty or missing"
+          find ClipStack/dist -type f 2>/dev/null || echo "dist directory empty or missing"
           exit 1
         fi
 
@@ -284,11 +285,11 @@ jobs:
         
         # Copy executable(s)
         if [ "${{ matrix.os-name }}" = "windows" ]; then
-          cp dist/clipstack.exe release/
-        elif [ "${{ matrix.os-name }}" = "macos" ] && [ -d "dist/ClipStack.app" ]; then
-          cp -r dist/ClipStack.app release/
+          cp ClipStack/dist/clipstack.exe release/
+        elif [ "${{ matrix.os-name }}" = "macos" ] && [ -d "ClipStack/dist/ClipStack.app" ]; then
+          cp -r ClipStack/dist/ClipStack.app release/
         else
-          cp dist/clipstack release/
+          cp ClipStack/dist/clipstack release/
           chmod +x release/clipstack
         fi
         
@@ -378,8 +379,8 @@ jobs:
       with:
         name: debug-${{ matrix.os-name }}-${{ github.run_number }}
         path: |
-          dist/
-          build/
+          ClipStack/dist/
+          ClipStack/build/
           *.spec
         retention-days: 7
 
