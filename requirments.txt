@@ -1,29 +1,23 @@
-python==3.11.x
-tk
-customtkinter
-keyboard
-pyperclip
-darkdetect
-uuid
-threading
-CTkMessagebox
-Pillow
-Pillow[tk]
-"""
-app = customtkinter.CTk()
-app.grid_rowconfigure(0, weight=1)
-app.grid_columnconfigure(0, weight=1)
+# ClipStack Dependencies
+# Core GUI framework
+customtkinter>=5.2.0
 
-# create scrollable textbox
-tk_textbox = customtkinter.CTkTextbox(app, activate_scrollbars=False)
-tk_textbox.grid(row=0, column=0, sticky="nsew")
+# Clipboard access
+pyperclip>=1.8.2
 
-# create CTk scrollbar
-ctk_textbox_scrollbar = customtkinter.CTkScrollbar(app, command=tk_textbox.yview)
-ctk_textbox_scrollbar.grid(row=0, column=1, sticky="ns")
+# Global hotkey support
+keyboard>=0.13.5
 
-# connect textbox scroll event to CTk scrollbar
-tk_textbox.configure(yscrollcommand=ctk_textbox_scrollbar.set)
+# Message boxes for CustomTkinter
+CTkMessagebox>=2.5
 
-app.mainloop()
-"""
+# Image processing (required by CustomTkinter)
+Pillow>=9.0.0
+
+# Build dependencies (for creating executables)
+pyinstaller>=5.13.0
+
+# Platform-specific dependencies
+# Linux: python3-tk, python3-dev (system packages)
+# macOS: tcl-tk (via brew)
+# Windows: included with Python
