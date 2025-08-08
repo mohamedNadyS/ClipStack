@@ -1,4 +1,4 @@
-name: Build ClipStack Cross-Platform
+name: Build and Release ClipStack
 
 on:
   push:
@@ -6,38 +6,47 @@ on:
     tags: [ 'v*' ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:  # Allow manual triggering
+
+env:
+  PYTHON_VERSION: "3.10"
+  APP_NAME: "clipstack"
 
 jobs:
   build:
+    name: Build ${{ matrix.os-name }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: windows-latest
-            python-version: "3.10"
-            executable-suffix: ".exe"
-            artifact-name: "clipstack-windows"
-            os-name: "windows"
-          - os: ubuntu-latest
-            python-version: "3.10"
-            executable-suffix: ""
-            artifact-name: "clipstack-linux"
-            os-name: "linux"
-          - os: macos-latest
-            python-version: "3.10"
-            executable-suffix: ""
-            artifact-name: "clipstack-macos"
-            os-name: "macos"
+            os-name: windows
+            executable: "clipstack.exe"
+            archive-cmd: 'Compress-Archive -Path "release/*" -DestinationPath "clipstack-windows-${{ github.run_number }}.zip"'
+            artifact-path: "clipstack-windows-*.zip"
+          - os: ubuntu-20.04  # Use specific version for consistency
+            os-name: linux
+            executable: "clipstack"
+            archive-cmd: 'tar -czf "clipstack-linux-${{ github.run_number }}.tar.gz" -C release .'
+            artifact-path: "clipstack-linux-*.tar.gz"
+          - os: macos-12  # Use specific version for consistency
+            os-name: macos
+            executable: "clipstack"
+            archive-cmd: 'tar -czf "clipstack-macos-${{ github.run_number }}.tar.gz" -C release .'
+            artifact-path: "clipstack-macos-*.tar.gz"
 
     steps:
-    - name: Checkout code
+    - name: Checkout repository
       uses: actions/checkout@v4
-
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
       with:
-        python-version: ${{ matrix.python-version }}
+        fetch-depth: 0  # Fetch all history for version detection
+
+    - name: Set up Python ${{ env.PYTHON_VERSION }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
 
     - name: Install system dependencies (Linux)
       if: matrix.os-name == 'linux'
@@ -51,98 +60,75 @@ jobs:
           libportaudio2 \
           libportaudiocpp0 \
           portaudio19-dev \
-          xvfb
+          xvfb \
+          libgtk-3-dev \
+          libglib2.0-dev
 
     - name: Install system dependencies (macOS)
       if: matrix.os-name == 'macos'
       run: |
-        brew install portaudio
-        # Install Tcl/Tk for tkinter
-        brew install tcl-tk
+        brew install portaudio tcl-tk
+        echo 'export PATH="/usr/local/opt/tcl-tk/bin:$PATH"' >> $GITHUB_ENV
 
-    - name: Create virtual environment
-      run: |
-        python -m venv venv
-        
-    - name: Activate virtual environment (Windows)
-      if: matrix.os-name == 'windows'
-      run: |
-        venv\Scripts\activate
-        echo "VIRTUAL_ENV=$env:VIRTUAL_ENV" >> $env:GITHUB_ENV
-        echo "$env:VIRTUAL_ENV\Scripts" >> $env:GITHUB_PATH
-
-    - name: Activate virtual environment (Unix)
-      if: matrix.os-name != 'windows'
-      run: |
-        source venv/bin/activate
-        echo "VIRTUAL_ENV=$VIRTUAL_ENV" >> $GITHUB_ENV
-        echo "$VIRTUAL_ENV/bin" >> $GITHUB_PATH
-
-    - name: Upgrade pip and install build tools
-      run: |
-        python -m pip install --upgrade pip setuptools wheel
+    - name: Cache Python dependencies
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
 
     - name: Install Python dependencies
       run: |
-        python -m pip install --upgrade \
-          customtkinter \
-          pyperclip \
-          keyboard \
-          CTkMessagebox \
-          pyinstaller \
-          pillow
+        python -m pip install --upgrade pip setuptools wheel
+        pip install -r requirements.txt
+        pip install pyinstaller>=6.0.0  # Use latest PyInstaller
 
-    - name: Install additional dependencies (Linux)
-      if: matrix.os-name == 'linux'
+    - name: Verify dependencies
       run: |
-        python -m pip install --upgrade \
-          pycairo \
-          PyGObject
-
-    - name: Verify installation
-      run: |
-        python -c "import customtkinter; print('CustomTkinter:', customtkinter.__version__)"
+        python -c "import customtkinter; print(f'CustomTkinter: {customtkinter.__version__}')"
         python -c "import pyperclip; print('Pyperclip: OK')"
         python -c "import keyboard; print('Keyboard: OK')"
         python -c "import CTkMessagebox; print('CTkMessagebox: OK')"
+        python -c "import tkinter; print('Tkinter: OK')"
 
-    - name: Create PyInstaller spec file
+    - name: Get version info
+      id: version
+      shell: bash
       run: |
-        cat > clipstack.spec << 'EOF'
+        if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+          VERSION=${GITHUB_REF#refs/tags/}
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+        else
+          VERSION="dev-$(date +%Y%m%d)-${GITHUB_SHA:0:7}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+        fi
+        echo "Building version: $VERSION"
+
+    - name: Create PyInstaller spec
+      shell: bash
+      run: |
+        cat > ${APP_NAME}.spec << 'EOF'
         # -*- mode: python ; coding: utf-8 -*-
         import sys
+        import os
         from pathlib import Path
 
         block_cipher = None
 
-        # Platform specific settings
-        platform_settings = {
-            'win32': {
-                'icon': None,  # Add .ico file path here
-                'console': False,
-                'windowed': True,
-            },
-            'darwin': {
-                'icon': None,  # Add .icns file path here
-                'console': False,
-                'windowed': True,
-            },
-            'linux': {
-                'icon': None,  # Add .png file path here
-                'console': False,
-                'windowed': True,
-            }
-        }
+        # Get version from environment
+        version = os.environ.get('BUILD_VERSION', 'dev')
 
-        current_platform = sys.platform
-        if current_platform.startswith('win'):
-            current_platform = 'win32'
-        elif current_platform.startswith('darwin'):
-            current_platform = 'darwin'
+        # Platform-specific settings
+        if sys.platform == 'win32':
+            console = False
+            icon = None  # Add .ico path here if available
+        elif sys.platform == 'darwin':
+            console = False
+            icon = None  # Add .icns path here if available  
         else:
-            current_platform = 'linux'
-
-        settings = platform_settings.get(current_platform, platform_settings['linux'])
+            console = False
+            icon = None  # Add .png path here if available
 
         a = Analysis(
             ['clipstack.py'],
@@ -150,14 +136,17 @@ jobs:
             binaries=[],
             datas=[
                 # Add any data files here if needed
-                # ('data_folder', 'data_folder'),
             ],
             hiddenimports=[
                 'customtkinter',
                 'tkinter',
                 'tkinter.ttk',
+                'tkinter.messagebox',
+                'tkinter.filedialog',
                 'PIL',
                 'PIL._tkinter_finder',
+                'PIL.Image',
+                'PIL.ImageTk',
                 'pyperclip',
                 'keyboard',
                 'CTkMessagebox',
@@ -169,7 +158,9 @@ jobs:
                 'atexit',
                 'sys',
                 'os',
-                'time'
+                'time',
+                'platform',
+                'typing'
             ],
             hookspath=[],
             hooksconfig={},
@@ -180,7 +171,9 @@ jobs:
                 'pandas',
                 'scipy',
                 'pytest',
-                'IPython'
+                'IPython',
+                'jupyter',
+                'notebook'
             ],
             win_no_prefer_redirects=False,
             win_private_assemblies=False,
@@ -204,162 +197,277 @@ jobs:
             upx=True,
             upx_exclude=[],
             runtime_tmpdir=None,
-            console=settings['console'],
+            console=console,
             disable_windowed_traceback=False,
             target_arch=None,
             codesign_identity=None,
             entitlements_file=None,
-            icon=settings['icon']
+            icon=icon,
+            version_file=None
         )
 
-        # macOS App Bundle
-        if current_platform == 'darwin':
+        # Create macOS app bundle
+        if sys.platform == 'darwin':
             app = BUNDLE(
                 exe,
                 name='ClipStack.app',
-                icon=settings['icon'],
+                icon=icon,
                 bundle_identifier='com.clipstack.app',
+                version=version,
                 info_plist={
+                    'CFBundleName': 'ClipStack',
+                    'CFBundleDisplayName': 'ClipStack',
+                    'CFBundleIdentifier': 'com.clipstack.app',
+                    'CFBundleVersion': version,
+                    'CFBundleShortVersionString': version,
                     'NSPrincipalClass': 'NSApplication',
                     'NSAppleScriptEnabled': False,
                     'CFBundleDocumentTypes': [],
-                    'NSHighResolutionCapable': 'True',
-                    'LSUIElement': '1',  # Hide from dock initially
-                    'NSRequiresAquaSystemAppearance': 'False'
+                    'NSHighResolutionCapable': True,
+                    'LSUIElement': False,  # Show in dock
+                    'NSRequiresAquaSystemAppearance': False,
+                    'LSMinimumSystemVersion': '10.13.0'
                 }
             )
         EOF
 
-    - name: Build executable with PyInstaller
+    - name: Build executable
+      env:
+        BUILD_VERSION: ${{ steps.version.outputs.version }}
       run: |
-        pyinstaller clipstack.spec --clean --noconfirm
-        
-    - name: Test executable (Windows)
+        echo "Building ClipStack ${{ steps.version.outputs.version }} for ${{ matrix.os-name }}"
+        pyinstaller ${APP_NAME}.spec --clean --noconfirm --log-level INFO
+
+    - name: Verify build (Windows)
       if: matrix.os-name == 'windows'
       run: |
         if (Test-Path "dist\clipstack.exe") {
-          Write-Host "✓ Executable created successfully"
-          Get-ChildItem "dist\clipstack.exe" | Format-List Name, Length, LastWriteTime
+          Write-Host "✅ Executable created successfully"
+          $fileInfo = Get-Item "dist\clipstack.exe"
+          Write-Host "Size: $($fileInfo.Length / 1MB) MB"
+          Write-Host "Created: $($fileInfo.CreationTime)"
         } else {
-          Write-Error "✗ Executable not found"
+          Write-Error "❌ Executable not found"
+          Get-ChildItem dist -Recurse
           exit 1
         }
 
-    - name: Test executable (Unix)
+    - name: Verify build (Unix)
       if: matrix.os-name != 'windows'
       run: |
         if [ -f "dist/clipstack" ] || [ -d "dist/ClipStack.app" ]; then
-          echo "✓ Executable created successfully"
+          echo "✅ Executable created successfully"
           ls -la dist/
+          if [ -f "dist/clipstack" ]; then
+            file dist/clipstack
+            ls -lh dist/clipstack
+          fi
         else
-          echo "✗ Executable not found"
+          echo "❌ Executable not found"
+          find dist -type f 2>/dev/null || echo "dist directory empty or missing"
           exit 1
         fi
 
-    - name: Package for distribution (Windows)
-      if: matrix.os-name == 'windows'
+    - name: Create release package
+      shell: bash
       run: |
-        mkdir release
-        copy "dist\clipstack.exe" "release\"
-        echo "# ClipStack for Windows" > release\README.txt
-        echo "Double-click clipstack.exe to run" >> release\README.txt
-        echo "Hotkey: Ctrl+Alt+C to show/hide window" >> release\README.txt
+        mkdir -p release
         
-    - name: Package for distribution (Linux)
-      if: matrix.os-name == 'linux'
-      run: |
-        mkdir release
-        cp dist/clipstack release/
-        chmod +x release/clipstack
-        cat > release/README.md << 'EOF'
-        # ClipStack for Linux
-        
-        ## Running
-        ```bash
-        ./clipstack
-        ```
-        
-        ## Hotkey
-        Ctrl+Alt+C to show/hide window
-        
-        ## Requirements
-        - X11 display server
-        - GTK3 (usually pre-installed)
-        EOF
-        
-    - name: Package for distribution (macOS)
-      if: matrix.os-name == 'macos'
-      run: |
-        mkdir release
-        if [ -d "dist/ClipStack.app" ]; then
+        # Copy executable(s)
+        if [ "${{ matrix.os-name }}" = "windows" ]; then
+          cp dist/clipstack.exe release/
+        elif [ "${{ matrix.os-name }}" = "macos" ] && [ -d "dist/ClipStack.app" ]; then
           cp -r dist/ClipStack.app release/
         else
           cp dist/clipstack release/
           chmod +x release/clipstack
         fi
-        cat > release/README.md << 'EOF'
-        # ClipStack for macOS
         
-        ## Running
-        If you have the .app bundle:
-        - Double-click ClipStack.app
+        # Create README
+        cat > release/README.md << EOF
+        # ClipStack ${{ steps.version.outputs.version }} - ${{ matrix.os-name }}
         
-        If you have the binary:
-        ```bash
-        ./clipstack
-        ```
+        A minimalist clipboard manager for developers and power users.
         
-        ## Hotkey
-        Ctrl+Alt+C to show/hide window
+        ## Installation & Usage
         
-        ## Note
-        You may need to allow the app in System Preferences > Security & Privacy
+        ### ${{ matrix.os-name }}
+        EOF
+        
+        if [ "${{ matrix.os-name }}" = "windows" ]; then
+          cat >> release/README.md << 'EOF'
+        
+        1. Extract the archive
+        2. Double-click `clipstack.exe` to run
+        
+        **Note:** Windows may show a security warning for unsigned executables. Click "More info" → "Run anyway"
+        EOF
+        elif [ "${{ matrix.os-name }}" = "macos" ]; then
+          cat >> release/README.md << 'EOF'
+        
+        1. Extract the archive
+        2. If you have `ClipStack.app`: Double-click to run
+        3. If you have the binary: Run `./clipstack` in terminal
+        
+        **Note:** macOS may block the app initially. Go to System Preferences → Security & Privacy → Allow anyway
+        EOF
+        else
+          cat >> release/README.md << 'EOF'
+        
+        1. Extract the archive
+        2. Make executable: `chmod +x clipstack`
+        3. Run: `./clipstack`
+        
+        **Requirements:**
+        - X11 display server
+        - GTK3 (usually pre-installed)
+        EOF
+        fi
+        
+        cat >> release/README.md << EOF
+        
+        ## Features
+        
+        - 📋 Automatically tracks your last 50 text copies
+        - ⌨️ Global hotkey: **Ctrl+Alt+C** to show/hide
+        - 📌 Pin important clipboard items
+        - 💾 Export history as TXT or JSON
+        - 🎨 System theme support (Dark/Light/Auto)
+        - 🔍 Right-click context menu for quick actions
+        
+        ## Support
+        
+        - Version: ${{ steps.version.outputs.version }}
+        - Platform: ${{ matrix.os-name }}
+        - Built: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+        - Repository: https://github.com/\${{ github.repository }}
+        
+        Report issues: https://github.com/\${{ github.repository }}/issues
         EOF
 
-    - name: Create archive (Windows)
-      if: matrix.os-name == 'windows'
+    - name: Create archive
+      shell: bash
       run: |
-        Compress-Archive -Path release\* -DestinationPath clipstack-${{ matrix.os-name }}.zip
+        if [ "${{ matrix.os-name }}" = "windows" ]; then
+          powershell -command "${{ matrix.archive-cmd }}"
+        else
+          ${{ matrix.archive-cmd }}
+        fi
+        ls -la clipstack-${{ matrix.os-name }}-*
 
-    - name: Create archive (Unix)
-      if: matrix.os-name != 'windows'
-      run: |
-        cd release
-        tar -czf ../clipstack-${{ matrix.os-name }}.tar.gz *
-        cd ..
-
-    - name: Upload artifacts (Windows)
-      if: matrix.os-name == 'windows'
-      uses: actions/upload-artifact@v3
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
       with:
-        name: ${{ matrix.artifact-name }}
-        path: clipstack-${{ matrix.os-name }}.zip
+        name: clipstack-${{ matrix.os-name }}-${{ github.run_number }}
+        path: ${{ matrix.artifact-path }}
+        retention-days: 30
+        compression-level: 6
 
-    - name: Upload artifacts (Unix)
-      if: matrix.os-name != 'windows'
-      uses: actions/upload-artifact@v3
+    - name: Upload executable for debugging
+      if: failure()
+      uses: actions/upload-artifact@v4
       with:
-        name: ${{ matrix.artifact-name }}
-        path: clipstack-${{ matrix.os-name }}.tar.gz
+        name: debug-${{ matrix.os-name }}-${{ github.run_number }}
+        path: |
+          dist/
+          build/
+          *.spec
+        retention-days: 7
 
   release:
+    name: Create Release
     needs: build
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
     
     steps:
-    - name: Download all artifacts
-      uses: actions/download-artifact@v3
-      
-    - name: Create Release
-      uses: softprops/action-gh-release@v1
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Download all build artifacts
+      uses: actions/download-artifact@v4
       with:
-        files: |
-          clipstack-windows/*.zip
-          clipstack-linux/*.tar.gz
-          clipstack-macos/*.tar.gz
+        path: artifacts
+        pattern: clipstack-*-${{ github.run_number }}
+
+    - name: Organize release files
+      run: |
+        mkdir -p release
+        find artifacts -name "*.zip" -o -name "*.tar.gz" | while read file; do
+          cp "$file" release/
+        done
+        ls -la release/
+
+    - name: Calculate checksums
+      run: |
+        cd release
+        sha256sum * > checksums.sha256
+        cat checksums.sha256
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: release/*
         draft: false
-        prerelease: false
+        prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
         generate_release_notes: true
+        make_latest: true
+        body: |
+          ## ClipStack ${{ github.ref_name }}
+          
+          A minimalist clipboard manager built with Python and CustomTkinter.
+          
+          ### 🎯 Features
+          - Automatically tracks last 50 clipboard items
+          - Global hotkey: **Ctrl+Alt+C** 
+          - Pin important items
+          - Export as TXT/JSON
+          - Cross-platform support
+          
+          ### 📦 Downloads
+          Choose the appropriate version for your operating system:
+          
+          - **Windows**: `clipstack-windows-*.zip`
+          - **Linux**: `clipstack-linux-*.tar.gz` 
+          - **macOS**: `clipstack-macos-*.tar.gz`
+          
+          ### 🔐 Verification
+          SHA256 checksums are provided in `checksums.sha256`
+          
+          ### 🐛 Issues
+          Report bugs at: https://github.com/${{ github.repository }}/issues
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  test-install:
+    name: Test Installation
+    needs: build
+    runs-on: ${{ matrix.os }}
+    if: github.event_name == 'pull_request'
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    
+    steps:
+    - name: Download artifact
+      uses: actions/download-artifact@v4
+      with:
+        pattern: clipstack-*-${{ github.run_number }}
+        path: artifacts
+
+    - name: Test installation
+      shell: bash
+      run: |
+        echo "Testing ClipStack installation on ${{ matrix.os }}"
+        find artifacts -name "*.zip" -o -name "*.tar.gz" | head -1 | while read archive; do
+          echo "Found archive: $archive"
+          # Basic extraction test - full GUI testing would require X11/display setup
+          if [[ "$archive" == *.zip ]]; then
+            unzip -t "$archive" || exit 1
+          else
+            tar -tzf "$archive" || exit 1
+          fi
+          echo "✅ Archive extraction test passed"
+        done
