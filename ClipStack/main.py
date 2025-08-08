@@ -57,6 +57,8 @@ class ClipboardManager:
         if not item_content or self.last_copied == item_content or len(item_content.strip()) == 0:
             return False
         
+        if len(item_content) > 100000:
+            return False 
         history = self.load_history()
         recent_items = history[:10] if len(history) >= 10 else history
         for item in recent_items:

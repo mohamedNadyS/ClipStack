@@ -12,6 +12,7 @@ ClipStack is a minimalist clipboard manager that tracks your recent text copies 
 
 ## Memory Optimization Techniques
 * Uses file-based JSON storage (data written to disk not RAM)
+* Limit the item content number of charcaters to 100,000 charcater about 25,000 word
 * Implements strict 50-item limit for history
 * Loads data on-demand (only in memory when UI is open)
 * make the copy content loaded to memory as preview for the first 100 charcaters only in the UI Tech Stack
