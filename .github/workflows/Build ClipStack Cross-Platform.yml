@@ -74,15 +74,24 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt', '**/requirments.txt') }}
         restore-keys: |
           ${{ runner.os }}-pip-
 
     - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip setuptools wheel
-        pip install -r requirements.txt
+        # Install from requirements file (note: fix typo in filename)
+        if [ -f "ClipStack/requirments.txt" ]; then
+          pip install -r ClipStack/requirments.txt
+        elif [ -f "requirements.txt" ]; then
+          pip install -r requirements.txt
+        else
+          # Fallback to individual packages
+          pip install customtkinter>=5.2.0 pyperclip>=1.8.2 keyboard>=0.13.5 CTkMessagebox>=2.5 Pillow>=9.0.0
+        fi
         pip install pyinstaller>=6.0.0  # Use latest PyInstaller
+      shell: bash
 
     - name: Verify dependencies
       run: |
@@ -131,7 +140,7 @@ jobs:
             icon = None  # Add .png path here if available
 
         a = Analysis(
-            ['clipstack.py'],
+            ['ClipStack/main.py'],  # Fixed: Correct path to main script
             pathex=[],
             binaries=[],
             datas=[
