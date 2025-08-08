@@ -74,16 +74,16 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt', '**/requirments.txt') }}
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
         restore-keys: |
           ${{ runner.os }}-pip-
 
     - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip setuptools wheel
-        # Install from requirements file (note: fix typo in filename)
-        if [ -f "ClipStack/requirments.txt" ]; then
-          pip install -r ClipStack/requirments.txt
+        # Install from requirements file
+        if [ -f "ClipStack/requirements.txt" ]; then
+          pip install -r ClipStack/requirements.txt
         elif [ -f "requirements.txt" ]; then
           pip install -r requirements.txt
         else
@@ -246,7 +246,7 @@ jobs:
       run: |
         echo "Building ClipStack ${{ steps.version.outputs.version }} for ${{ matrix.os-name }}"
         cd ClipStack
-        pyinstaller ../${APP_NAME}.spec --clean --noconfirm --log-level INFO
+        pyinstaller ../clipstack.spec --clean --noconfirm --log-level INFO
 
     - name: Verify build (Windows)
       if: matrix.os-name == 'windows'
